@@ -18,6 +18,8 @@ import castepfmtvis.arithmetic as arit
 from castepfmtvis import io
 from castepfmtvis.utils import cart_to_frac, frac_to_cart, reduce_frac_pts
 
+from ase.units import Bohr
+
 __all__ = ['UnitCell', 'calc_recip_lat',
            'cell_cart_to_abc', 'cell_abc_to_cart']
 
@@ -381,6 +383,20 @@ def _get_bv_spg(cell: ase.Atoms) -> str:
     return bv_type
 
 
+def _convert_to_ang(val: float | npt.NDArray[np.float64], inunits: str):
+    """Convert length units to Angstroms."""
+    inunits = inunits.upper()
+    if inunits == 'ANG':
+        # Already in Angstroms, do nothing
+        pass
+    elif inunits == 'BOHR':
+        val *= Bohr
+    else:
+        raise ValueError('Unknown length unit: {inunits}')
+
+    return val
+
+
 def _read_real_lat_cell(filename: str) -> npt.NDArray[np.float64]:
     """Read lattice vector from a cell file.
 
@@ -397,12 +413,27 @@ def _read_real_lat_cell(filename: str) -> npt.NDArray[np.float64]:
 
     real_lat: npt.NDArray[np.float64] = np.empty((3, 3), dtype=np.float64)
 
+    length_unit, start_pos = 'ANG', 0
     if have_cart is True:
+        # Check if we have any lenght units we need to deal with. LENGTH_UNITS 05/08/2025
+        if len(block_contents) == 4:
+            # First line gives length units so read and convert later. LENGTH_UNITS 05/08/2025
+            start_pos = 1
+            length_unit = block_contents[0].strip().upper()
+        elif len(block_contents) == 3:
+            # No units, continue as normal.
+            pass
+        else:
+            raise IOError('Improperly formatted LATTICE_CART block')
+
         # Loop around the lines containing each vector parsing any arithmetic that may be present
         # in a given component.
-        for i, vec in enumerate(block_contents):
+        for i, vec in enumerate(block_contents[start_pos:]):
             for j, comp in enumerate(vec.split()):
                 real_lat[i, j] = arit.parse_arithmetic(comp)
+
+        # Convert units as necessary LENGTH_UNITS 05/08/2025
+        real_lat = _convert_to_ang(real_lat, length_unit)
     else:
         # Try to construct lattice vectors from lengths and angles.
         # First, we need to construct an ASE cell object so we need lattice positions
