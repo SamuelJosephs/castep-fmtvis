@@ -142,6 +142,69 @@ def read_castep_fmt(filename: str, is_den: bool,
     return header, gridvals
 
 
+def den_spin_to_rho_up_down(charge: npt.NDArray[np.float64],
+                            spin: npt.NDArray[np.float64]) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """Calculate charge densities for each collinear spin channel from total charge density and spin density.
+
+    Parameters
+    ----------
+    charge : npt.NDArray[np.float64]
+        total charge density on a real-space grid
+    spin : npt.NDArray[np.float64]
+        spin density on a real-space grid
+
+    Returns
+    -------
+    rhoup, rhodown : tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]
+        densities for each spin channel on a real-space grid
+
+    Raises
+    ------
+    AssertionError
+        Grid dimensions do not match between charge and spin.
+
+    """
+
+    if charge.shape != spin.shape:
+        raise AssertionError(f'Charge array has shape {charge.shape} ' +
+                             f'but spin array has {spin.shape}')
+
+    rhoup = (charge + spin)/2.0
+    rhodown = (charge - spin)/2.0
+    return rhoup, rhodown
+
+
+def rho_up_down_to_den_spin(rhoup: npt.NDArray[np.float64],
+                            rhodown: npt.NDArray[np.float64]) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """Calculate total charge and spin density from charge densities for each collinear spin channel.
+
+    Parameters
+    ----------
+    rhoup : npt.NDArray[np.float64]
+        spin-up density on a real-space grid
+    rhodown : npt.NDArray[np.float64]
+        spin-down density on a real-space grid
+
+    Returns
+    -------
+    rhoup, rhodown : tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]
+        charge and spin densities a real-space grid
+
+    Raises
+    ------
+    AssertionError
+        Grid dimensions do not match between rhoup and rhodown.
+
+    """
+    if rhoup.shape != rhodown.shape:
+        raise AssertionError(f'rhoup array has shape {rhoup.shape} ' +
+                             f'but rhodown array has {rhodown.shape}')
+
+    charge = rhoup + rhodown
+    spin = rhoup - rhodown
+    return charge, spin
+
+
 class GridData():
     """Grid data from CASTEP to be visualised.
 
@@ -195,13 +258,17 @@ class GridData():
     units : str
         Units for the density or potential.
     charge: npt.NDArray[np.float64]
-        Charge density (units: electrons*grid_pts)
+        Charge density (units: electrons*grid_pts) - see however have_rho_up_down
     spin: npt.NDArray[np.float64]
-        Spin density (units: spin*grid_pts)
+        Spin density (units: spin*grid_pts)  - see however have_rho_up_down
     pot: npt.NDArray[np.float64]
         Potential for each (collinear) spin-channel (units: Hartrees)
     ncpot: npt.NDArray[np.float64]
         Potential for non-collinear spin-potential (units : Hartrees)
+
+    have_rho_up_down : bool
+        Flag for whether charge and spin arrays instead contain charge densities
+        for each spin channel, i.e. rhoup and rhodown respectively.
     """
 
     def __init__(self, filename: str | None = None,
@@ -236,6 +303,7 @@ class GridData():
         self.pot: npt.NDArray[np.float64] | None = None
         self.ncpot: npt.NDArray[np.float64] | None = None
         self.cur_data: npt.NDArray[np.float64] | None = None
+        self.have_rho_up_down = False
 
         # 09/06/2025 Decide how we want to initialise the file
         if filename is not None:
@@ -343,3 +411,44 @@ class GridData():
                 f'Data array shape {arr.shape} is not equal to fine_grid {self.fine_grid}'
             )
         self.cur_data = arr
+
+    def get_rho_up_down(self, ret_arrs: bool = False):
+        if self.nspins == 1:
+            raise AssertionError('Cannot get rhoup and rhodown as only 1 spin channel.')
+        if self.is_den is False:
+            raise TypeError('Cannot get rhoup and rhodown for non density data.')
+
+        # Retrieve/calculate rhoup and rhodown appropriately.
+        if self.have_rho_up_down is False:
+            rhoup, rhodown = den_spin_to_rho_up_down(self.charge, self.spin)
+        else:
+            rhoup, rhodown = self.charge, self.spin
+
+        if ret_arrs is True:
+            return rhoup, rhodown
+        elif self.have_rho_up_down is False:
+            # Overwrite charge and spin arrays with rhoup and rhodown respectively.
+            self.charge = rhoup
+            self.spin = rhodown
+            self.have_rho_up_down = True
+
+    def get_charge_spin(self, ret_arrs: bool = False):
+        if self.nspins == 1:
+            raise AssertionError('Cannot get charge and spin as only 1 spin channel.')
+        if self.is_den is False:
+            raise TypeError('Cannot get charge and spin for non density data.')
+
+        # Retrieve/calculate charge and spin appropriately.
+        # NB: charge array should be rhoup and spin array should be rhodown.
+        if self.have_rho_up_down is True:
+            charge, spin = rho_up_down_to_den_spin(self.charge, self.spin)
+        else:
+            charge, spin = self.charge, self.spin
+
+        if ret_arrs is True:
+            return charge, spin
+        elif self.have_rho_up_down is True:
+            # Overwrite charge and spin arrays.
+            self.charge = charge
+            self.spin = spin
+            self.have_rho_up_down = False
