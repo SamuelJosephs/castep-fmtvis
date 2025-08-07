@@ -19,7 +19,8 @@ import numpy.typing as npt
 
 from castepfmtvis import io
 
-__all__ = ['GridData', 'read_castep_fmt', 'read_real_lat_fmt']
+__all__ = ['GridData', 'read_castep_fmt', 'read_real_lat_fmt',
+           'den_spin_to_rho_up_down', 'rho_up_down_to_den_spin']
 
 
 def read_real_lat_fmt(filename: str) -> npt.NDArray[np.float64]:
