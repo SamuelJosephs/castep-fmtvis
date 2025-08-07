@@ -454,7 +454,7 @@ class GridData():
             self.spin = spin
             self.have_rho_up_down = False
 
-    def shift_grid(self, frac_shift: npt.NDArray[np.float64]):
+    def shift_grid_data(self, frac_shift: npt.NDArray[np.float64]):
         """Perform cyclic shift on grid data with shift in frac. coords.
 
         The shift is provided in fractional coordinates. All allocated data arrays
@@ -471,10 +471,10 @@ class GridData():
             frac_shift must be a 1D array of size 3.
 
         """
-        return frac_shift_grid(self, frac_shift)
+        return _frac_shift_grid(self, frac_shift)
 
 
-def frac_shift_grid(griddata: GridData, frac_shift: npt.NDArray[np.float64]) -> GridData:
+def _frac_shift_grid(griddata: GridData, frac_shift: npt.NDArray[np.float64]) -> GridData:
     """Perform cyclic shift on grid data with shift in frac. coords.
 
     This is useful if you have used shifted cells in the calculation for convenience
