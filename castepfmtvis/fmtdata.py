@@ -453,3 +453,84 @@ class GridData():
             self.charge = charge
             self.spin = spin
             self.have_rho_up_down = False
+
+    def shift_grid(self, frac_shift: npt.NDArray[np.float64]):
+        """Perform cyclic shift on grid data with shift in frac. coords.
+
+        The shift is provided in fractional coordinates. All allocated data arrays
+        (charge, spin etc.) will be modified inplace.
+
+        Parameters
+        ----------
+        frac_shift : npt.NDArray[np.float64]
+            shift in fractional coordinates
+
+        Raises
+        ------
+        IndexError
+            frac_shift must be a 1D array of size 3.
+
+        """
+        return frac_shift_grid(self, frac_shift)
+
+
+def frac_shift_grid(griddata: GridData, frac_shift: npt.NDArray[np.float64]) -> GridData:
+    """Perform cyclic shift on grid data with shift in frac. coords.
+
+    This is useful if you have used shifted cells in the calculation for convenience
+    but make it hard to visualise the data.
+    Also useful for magnetic systems, .e.g. antiferromagnets, with degenerate ground states.
+
+    Parameters
+    ----------
+    griddata : GridData
+        grid data to shift
+    frac_shift : npt.NDArray[np.float64]
+        shift in fractional coordinates
+
+    Returns
+    -------
+    GridData
+        shifted data
+
+    Raises
+    ------
+    IndexError
+        frac_shift must be a 1D array of size 3.
+
+    """
+
+    if frac_shift.ndim != 1 and frac_shift.shape[0] != 3:
+        raise IndexError('frac_shift must be 1D array of size 3')
+
+    # Calculate shift in grid coordinates.
+    grid_shift = frac_shift * griddata.fine_grid
+
+    def _do_shift(datarr):
+        assert datarr.ndim == 3
+        for i in range(3):
+            datarr = np.roll(datarr, grid_shift[i], axis=i)
+        return datarr
+
+    # Shift grids as necessary
+    # Densities
+    if griddata.charge is not None:
+        griddata.charge = _do_shift(griddata.charge)
+    if griddata.spin is not None:
+        griddata.spin = _do_shift(griddata.spin)
+    if griddata.ncspin is not None:
+        for ns in range(3):
+            griddata.ncspin[ns, :, :, :] = _do_shift(griddata.ncspin[ns, :, :, :])
+
+    # Potentials
+    if griddata.pot is not None:
+        for ns in range(griddata.nspins):
+            griddata.pot[ns, :, :, :] = _do_shift(griddata.pot[ns, :, :, :])
+    if griddata.ncpot is not None:
+        for ns in range(3):
+            griddata.ncpot[ns, :, :, :] = _do_shift(griddata.ncpot[ns, :, :, :])
+
+    # Current plotting data - should always be allocated!
+    griddata.cur_data = _do_shift(griddata.cur_data)
+
+    return griddata
