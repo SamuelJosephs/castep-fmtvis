@@ -241,6 +241,8 @@ class GridData():
     By default, this will default to the charge/npts or pot[0,:,:,:]
     depending on whether is_den is True or False.
 
+    IMPORTANT: Prior to plotting, the set_current_data method must be used to ensure the right set is plotted.
+
     Attributes
     -------
     is_den : bool
@@ -270,6 +272,17 @@ class GridData():
     have_rho_up_down : bool
         Flag for whether charge and spin arrays instead contain charge densities
         for each spin channel, i.e. rhoup and rhodown respectively.
+
+    Methods
+    --------
+    set_current_data
+        Set the data array that must be used for plotting.
+    get_rho_up_down
+        Get the charge densities for each spin channel from charge and spin densities.
+    get_charge_spin
+        Get the charge and spin densities from charge densities for each spin channel.
+    shift_grid_data
+        Performs a cyclic shift of grid data given a shift in fractional coordinates.
     """
 
     def __init__(self, filename: str | None = None,
