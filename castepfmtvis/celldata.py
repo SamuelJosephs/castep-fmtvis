@@ -413,7 +413,7 @@ def _read_real_lat_cell(filename: str) -> npt.NDArray[np.float64]:
 
     real_lat: npt.NDArray[np.float64] = np.empty((3, 3), dtype=np.float64)
 
-    length_unit, start_pos = 'ANG', 0
+    length_unit = 'ANG'
     if have_cart is True:
         # Check if we have any lenght units we need to deal with. LENGTH_UNITS 05/08/2025
         if len(block_contents) == 4:
@@ -422,7 +422,7 @@ def _read_real_lat_cell(filename: str) -> npt.NDArray[np.float64]:
             length_unit = block_contents[0].strip().upper()
         elif len(block_contents) == 3:
             # No units, continue as normal.
-            pass
+            start_pos = 0
         else:
             raise IOError('Improperly formatted LATTICE_CART block')
 
@@ -439,11 +439,25 @@ def _read_real_lat_cell(filename: str) -> npt.NDArray[np.float64]:
         # First, we need to construct an ASE cell object so we need lattice positions
         symbols, scaled_positions, positions = _read_cell_pos(filename)
 
+        # Check if we have any lenght units we need to deal with. LENGTH_UNITS 05/08/2025
+        if len(block_contents) == 3:
+            # First line gives length units so read and convert later. LENGTH_UNITS 05/08/2025
+            len_pos, angle_pos = 1, 2
+            length_unit = block_contents[0].strip().upper()
+        elif len(block_contents) == 2:
+            # No units, continue as normal.
+            len_pos, angle_pos = 0, 1
+        else:
+            raise IOError('Improperly formatted LATTICE_ABC block')
+
         # Now parse arithmetic in LATTICE_ABC block
-        lengths = np.array([arit.parse_arithmetic(x) for x in block_contents[0].split()],
+        lengths = np.array([arit.parse_arithmetic(x) for x in block_contents[len_pos].split()],
                            dtype=np.float64)
-        angles = np.array([arit.parse_arithmetic(x) for x in block_contents[1].split()],
+        angles = np.array([arit.parse_arithmetic(x) for x in block_contents[angle_pos].split()],
                           dtype=np.float64)
+
+        # Convert units as necessary LENGTH_UNITS 05/08/2025
+        lengths = _convert_to_ang(lengths, length_unit)
 
         # Create cell and then find the Bravais lattice we need
         cellparams = np.concatenate((lengths, angles))
