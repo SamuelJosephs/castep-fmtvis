@@ -1,0 +1,10 @@
+%block lattice_abc
+ang
+5.431/sqrt(2) 5.431/sqrt(2) 5.431/sqrt(2)
+60.0 60.0 60.0
+%endblock lattice_abc
+
+%block positions_frac
+Si 0.0 0.0 0.0
+Si 1/4 1/4 1/4
+%endblock positions_frac

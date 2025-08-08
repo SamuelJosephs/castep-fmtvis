@@ -496,7 +496,20 @@ def calc_recip_lat(real_lat: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]
 class UnitCell():
     """Unit cell of a structure to visualise.
 
-    Currently, the data can only be read or initialised in a CASTEP format.
+    The cell can be initialised by directly by setting the necessary attributes, namely:
+    1. real_lat (in Angstroms)
+    2. frac_pos or cart_pos (in Angstroms)
+
+    Alternatively, it may be initialised by reading a CASTEP .cell file.
+    Note that by default, like in CASTEP, the default length unit is Angstroms
+    and will be assumed internally.
+
+    When doing so, arithmetic operations supported by CASTEP's parser will likewise be supported here.
+    Additionally, LIMITED support is availble for CASTEP's unit system where units for
+    certain keyword blocks may be provided and conversion done appropriately.
+
+    Currently, this is only supported for the LATTICE_ABC and LATTICE_CART blocks.
+    In particular, the POSITIONS_ABS block *must* be specified in angstroms.
 
     Attributes
     -------
