@@ -258,6 +258,13 @@ class GridData():
         By default, this will default to the charge/den or pot[0,:,:,:] arrays
         depending on whether is_den is True or False.
 
+    nspins: int
+        The number of spin channels (1: spin unpolarised, 2: collinear)
+    have_nc: bool
+        Whether this is a non-collinear calculation or not.
+    is_den: bool
+        Current file is an electronic density.
+
     units : str
         Units for the density or potential.
     charge: npt.NDArray[np.float64]
