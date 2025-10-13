@@ -259,10 +259,22 @@ def _read_cell_pos(filename: str) -> tuple[list,
     else:
         have_frac = True
 
-    # Parse arithmetic in the block
+    # When counting atoms, check if we have specified any    LENGTH_UNITS 13/10/2025
+    # length units units but only for Cartesian coordinates. LENGTH_UNITS 13/10/2025
+    length_unit = None
+    if have_frac is False:
+        length_unit = 'ANG'
+        try:
+            sp, x, y, z = block_contents[0].split()
+        except ValueError:
+            # Not a coordinate line so probably length unit
+            length_unit = block_contents[0].strip().upper()
+            block_contents = block_contents[1:]
+
     natoms = len(block_contents)
     species = [None for i in range(natoms)]
 
+    # Parse arithmetic in the block
     vals = np.empty((natoms, 3), dtype=np.float64)
     for i, line in enumerate(block_contents):
         species[i] = line.split()[0]
@@ -275,6 +287,8 @@ def _read_cell_pos(filename: str) -> tuple[list,
         frac_pos = vals
     else:
         cart_pos = vals
+        # Make sure to convert to Angstroms  LENGTH_UNITS 13/10/2025
+        cart_pos = _convert_to_ang(cart_pos, length_unit)
 
     return species, frac_pos, cart_pos
 
@@ -415,7 +429,7 @@ def _read_real_lat_cell(filename: str) -> npt.NDArray[np.float64]:
 
     length_unit = 'ANG'
     if have_cart is True:
-        # Check if we have any lenght units we need to deal with. LENGTH_UNITS 05/08/2025
+        # Check if we have any length units we need to deal with. LENGTH_UNITS 05/08/2025
         if len(block_contents) == 4:
             # First line gives length units so read and convert later. LENGTH_UNITS 05/08/2025
             start_pos = 1
