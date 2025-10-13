@@ -18,6 +18,7 @@ import numpy as np
 import numpy.typing as npt
 
 from castepfmtvis import io
+from typing import Optional, Tuple
 
 __all__ = ['GridData', 'read_castep_fmt', 'read_real_lat_fmt',
            'den_spin_to_rho_up_down', 'rho_up_down_to_den_spin']
@@ -433,7 +434,36 @@ class GridData():
             )
         self.cur_data = arr
 
-    def get_rho_up_down(self, ret_arrs: bool = False):
+    def get_rho_up_down(self, ret_arrs: bool = False) -> Optional[Tuple[
+            npt.NDArray[np.float64], npt.NDArray[np.float64]]]:
+        """Get the charge density for each spin channel.
+
+        By default, the 'up' channel or whatever the first spin channel's charge density
+        is in CASTEP will be stored in the charge attribute while the 'down' or
+        second spin channel's density will be stored in the spin attribute.
+        Alternatively, the actual arrays can be returned by passing in ret_arrs=True.
+
+        If the respective arrays are already there, this function simply returns them.
+
+        Parameters
+        ----------
+        ret_arrs : bool
+            return actual arrays for each spin channel rather than
+            overriding the original ones in the class instance.
+
+        Returns
+        -------
+        rhoup, rhodown : npt.NDArray[np.float64]
+            charge arrays for spin up/down channel (if ret_arrs is True)
+
+        Raises
+        ------
+        TypeError
+            Data is not a density and thus has no 'rhoup' and 'rhodown'
+        AssertionError
+            Only one spin channel, hence no rhoup or rhodown.
+        """
+
         if self.nspins == 1:
             raise AssertionError('Cannot get rhoup and rhodown as only 1 spin channel.')
         if self.is_den is False:
@@ -453,7 +483,34 @@ class GridData():
             self.spin = rhodown
             self.have_rho_up_down = True
 
-    def get_charge_spin(self, ret_arrs: bool = False):
+    def get_charge_spin(self, ret_arrs: bool = False) -> Optional[Tuple[
+            npt.NDArray[np.float64], npt.NDArray[np.float64]]]:
+        """Get the total charge and spin density from spin channel densities.
+
+        This assumes that rhoup is in the charge attribute and rhodown is the spin attribute.
+        By default, this function will override the original arrays in the instance but the
+        arrays can instead be returned without overriding by passing in ret_arrs=True.
+
+        If the respective arrays are already there, this function simply returns them.
+
+        Parameters
+        ----------
+        ret_arrs : bool
+            return actual arrays for each spin channel rather than
+            overriding the original ones in the class instance.
+
+        Returns
+        -------
+        charge, spin : npt.NDArray[np.float64]
+            total charge density and spin density arrays (if ret_arrs is True)
+
+        Raises
+        ------
+        TypeError
+            Data is not a density and thus has no 'charge' and 'spin' densities.
+        AssertionError
+            Only one spin channel, hence no spin density.
+        """
         if self.nspins == 1:
             raise AssertionError('Cannot get charge and spin as only 1 spin channel.')
         if self.is_den is False:
