@@ -18,8 +18,10 @@ import numpy as np
 import numpy.typing as npt
 
 from castepfmtvis import io
+from typing import Optional, Tuple
 
-__all__ = ['GridData', 'read_castep_fmt', 'read_real_lat_fmt']
+__all__ = ['GridData', 'read_castep_fmt', 'read_real_lat_fmt',
+           'den_spin_to_rho_up_down', 'rho_up_down_to_den_spin']
 
 
 def read_real_lat_fmt(filename: str) -> npt.NDArray[np.float64]:
@@ -142,6 +144,69 @@ def read_castep_fmt(filename: str, is_den: bool,
     return header, gridvals
 
 
+def den_spin_to_rho_up_down(charge: npt.NDArray[np.float64],
+                            spin: npt.NDArray[np.float64]) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """Calculate charge densities for each collinear spin channel from total charge density and spin density.
+
+    Parameters
+    ----------
+    charge : npt.NDArray[np.float64]
+        total charge density on a real-space grid
+    spin : npt.NDArray[np.float64]
+        spin density on a real-space grid
+
+    Returns
+    -------
+    rhoup, rhodown : tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]
+        densities for each spin channel on a real-space grid
+
+    Raises
+    ------
+    AssertionError
+        Grid dimensions do not match between charge and spin.
+
+    """
+
+    if charge.shape != spin.shape:
+        raise AssertionError(f'Charge array has shape {charge.shape} ' +
+                             f'but spin array has {spin.shape}')
+
+    rhoup = (charge + spin)/2.0
+    rhodown = (charge - spin)/2.0
+    return rhoup, rhodown
+
+
+def rho_up_down_to_den_spin(rhoup: npt.NDArray[np.float64],
+                            rhodown: npt.NDArray[np.float64]) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """Calculate total charge and spin density from charge densities for each collinear spin channel.
+
+    Parameters
+    ----------
+    rhoup : npt.NDArray[np.float64]
+        spin-up density on a real-space grid
+    rhodown : npt.NDArray[np.float64]
+        spin-down density on a real-space grid
+
+    Returns
+    -------
+    rhoup, rhodown : tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]
+        charge and spin densities a real-space grid
+
+    Raises
+    ------
+    AssertionError
+        Grid dimensions do not match between rhoup and rhodown.
+
+    """
+    if rhoup.shape != rhodown.shape:
+        raise AssertionError(f'rhoup array has shape {rhoup.shape} ' +
+                             f'but rhodown array has {rhodown.shape}')
+
+    charge = rhoup + rhodown
+    spin = rhoup - rhodown
+    return charge, spin
+
+
 class GridData():
     """Grid data from CASTEP to be visualised.
 
@@ -177,6 +242,8 @@ class GridData():
     By default, this will default to the charge/npts or pot[0,:,:,:]
     depending on whether is_den is True or False.
 
+    IMPORTANT: Prior to plotting, the set_current_data method must be used to ensure the right set is plotted.
+
     Attributes
     -------
     is_den : bool
@@ -192,16 +259,38 @@ class GridData():
         By default, this will default to the charge/den or pot[0,:,:,:] arrays
         depending on whether is_den is True or False.
 
+    nspins: int
+        The number of spin channels (1: spin unpolarised, 2: collinear)
+    have_nc: bool
+        Whether this is a non-collinear calculation or not.
+    is_den: bool
+        Current file is an electronic density.
+
     units : str
         Units for the density or potential.
     charge: npt.NDArray[np.float64]
-        Charge density (units: electrons*grid_pts)
+        Charge density (units: electrons*grid_pts) - see however have_rho_up_down
     spin: npt.NDArray[np.float64]
-        Spin density (units: spin*grid_pts)
+        Spin density (units: spin*grid_pts)  - see however have_rho_up_down
     pot: npt.NDArray[np.float64]
         Potential for each (collinear) spin-channel (units: Hartrees)
     ncpot: npt.NDArray[np.float64]
         Potential for non-collinear spin-potential (units : Hartrees)
+
+    have_rho_up_down : bool
+        Flag for whether charge and spin arrays instead contain charge densities
+        for each spin channel, i.e. rhoup and rhodown respectively.
+
+    Methods
+    --------
+    set_current_data
+        Set the data array that must be used for plotting.
+    get_rho_up_down
+        Get the charge densities for each spin channel from charge and spin densities.
+    get_charge_spin
+        Get the charge and spin densities from charge densities for each spin channel.
+    shift_grid_data
+        Performs a cyclic shift of grid data given a shift in fractional coordinates.
     """
 
     def __init__(self, filename: str | None = None,
@@ -236,6 +325,7 @@ class GridData():
         self.pot: npt.NDArray[np.float64] | None = None
         self.ncpot: npt.NDArray[np.float64] | None = None
         self.cur_data: npt.NDArray[np.float64] | None = None
+        self.have_rho_up_down = False
 
         # 09/06/2025 Decide how we want to initialise the file
         if filename is not None:
@@ -343,3 +433,181 @@ class GridData():
                 f'Data array shape {arr.shape} is not equal to fine_grid {self.fine_grid}'
             )
         self.cur_data = arr
+
+    def get_rho_up_down(self, ret_arrs: bool = False) -> Optional[Tuple[
+            npt.NDArray[np.float64], npt.NDArray[np.float64]]]:
+        """Get the charge density for each spin channel.
+
+        By default, the 'up' channel or whatever the first spin channel's charge density
+        is in CASTEP will be stored in the charge attribute while the 'down' or
+        second spin channel's density will be stored in the spin attribute.
+        Alternatively, the actual arrays can be returned by passing in ret_arrs=True.
+
+        If the respective arrays are already there, this function simply returns them.
+
+        Parameters
+        ----------
+        ret_arrs : bool
+            return actual arrays for each spin channel rather than
+            overriding the original ones in the class instance.
+
+        Returns
+        -------
+        rhoup, rhodown : npt.NDArray[np.float64]
+            charge arrays for spin up/down channel (if ret_arrs is True)
+
+        Raises
+        ------
+        TypeError
+            Data is not a density and thus has no 'rhoup' and 'rhodown'
+        AssertionError
+            Only one spin channel, hence no rhoup or rhodown.
+        """
+
+        if self.nspins == 1:
+            raise AssertionError('Cannot get rhoup and rhodown as only 1 spin channel.')
+        if self.is_den is False:
+            raise TypeError('Cannot get rhoup and rhodown for non density data.')
+
+        # Retrieve/calculate rhoup and rhodown appropriately.
+        if self.have_rho_up_down is False:
+            rhoup, rhodown = den_spin_to_rho_up_down(self.charge, self.spin)
+        else:
+            rhoup, rhodown = self.charge, self.spin
+
+        if ret_arrs is True:
+            return rhoup, rhodown
+        elif self.have_rho_up_down is False:
+            # Overwrite charge and spin arrays with rhoup and rhodown respectively.
+            self.charge = rhoup
+            self.spin = rhodown
+            self.have_rho_up_down = True
+
+    def get_charge_spin(self, ret_arrs: bool = False) -> Optional[Tuple[
+            npt.NDArray[np.float64], npt.NDArray[np.float64]]]:
+        """Get the total charge and spin density from spin channel densities.
+
+        This assumes that rhoup is in the charge attribute and rhodown is the spin attribute.
+        By default, this function will override the original arrays in the instance but the
+        arrays can instead be returned without overriding by passing in ret_arrs=True.
+
+        If the respective arrays are already there, this function simply returns them.
+
+        Parameters
+        ----------
+        ret_arrs : bool
+            return actual arrays for each spin channel rather than
+            overriding the original ones in the class instance.
+
+        Returns
+        -------
+        charge, spin : npt.NDArray[np.float64]
+            total charge density and spin density arrays (if ret_arrs is True)
+
+        Raises
+        ------
+        TypeError
+            Data is not a density and thus has no 'charge' and 'spin' densities.
+        AssertionError
+            Only one spin channel, hence no spin density.
+        """
+        if self.nspins == 1:
+            raise AssertionError('Cannot get charge and spin as only 1 spin channel.')
+        if self.is_den is False:
+            raise TypeError('Cannot get charge and spin for non density data.')
+
+        # Retrieve/calculate charge and spin appropriately.
+        # NB: charge array should be rhoup and spin array should be rhodown.
+        if self.have_rho_up_down is True:
+            charge, spin = rho_up_down_to_den_spin(self.charge, self.spin)
+        else:
+            charge, spin = self.charge, self.spin
+
+        if ret_arrs is True:
+            return charge, spin
+        elif self.have_rho_up_down is True:
+            # Overwrite charge and spin arrays.
+            self.charge = charge
+            self.spin = spin
+            self.have_rho_up_down = False
+
+    def shift_grid_data(self, frac_shift: npt.NDArray[np.float64]):
+        """Perform cyclic shift on grid data with shift in frac. coords.
+
+        The shift is provided in fractional coordinates. All allocated data arrays
+        (charge, spin etc.) will be modified inplace.
+
+        Parameters
+        ----------
+        frac_shift : npt.NDArray[np.float64]
+            shift in fractional coordinates
+
+        Raises
+        ------
+        IndexError
+            frac_shift must be a 1D array of size 3.
+
+        """
+        return _frac_shift_grid(self, frac_shift)
+
+
+def _frac_shift_grid(griddata: GridData, frac_shift: npt.NDArray[np.float64]) -> GridData:
+    """Perform cyclic shift on grid data with shift in frac. coords.
+
+    This is useful if you have used shifted cells in the calculation for convenience
+    but make it hard to visualise the data.
+    Also useful for magnetic systems, .e.g. antiferromagnets, with degenerate ground states.
+
+    Parameters
+    ----------
+    griddata : GridData
+        grid data to shift
+    frac_shift : npt.NDArray[np.float64]
+        shift in fractional coordinates
+
+    Returns
+    -------
+    GridData
+        shifted data
+
+    Raises
+    ------
+    IndexError
+        frac_shift must be a 1D array of size 3.
+
+    """
+
+    if frac_shift.ndim != 1 and frac_shift.shape[0] != 3:
+        raise IndexError('frac_shift must be 1D array of size 3')
+
+    # Calculate shift in grid coordinates.
+    grid_shift = frac_shift * griddata.fine_grid
+
+    def _do_shift(datarr):
+        assert datarr.ndim == 3
+        for i in range(3):
+            datarr = np.roll(datarr, grid_shift[i], axis=i)
+        return datarr
+
+    # Shift grids as necessary
+    # Densities
+    if griddata.charge is not None:
+        griddata.charge = _do_shift(griddata.charge)
+    if griddata.spin is not None:
+        griddata.spin = _do_shift(griddata.spin)
+    if griddata.ncspin is not None:
+        for ns in range(3):
+            griddata.ncspin[ns, :, :, :] = _do_shift(griddata.ncspin[ns, :, :, :])
+
+    # Potentials
+    if griddata.pot is not None:
+        for ns in range(griddata.nspins):
+            griddata.pot[ns, :, :, :] = _do_shift(griddata.pot[ns, :, :, :])
+    if griddata.ncpot is not None:
+        for ns in range(3):
+            griddata.ncpot[ns, :, :, :] = _do_shift(griddata.ncpot[ns, :, :, :])
+
+    # Current plotting data - should always be allocated!
+    griddata.cur_data = _do_shift(griddata.cur_data)
+
+    return griddata

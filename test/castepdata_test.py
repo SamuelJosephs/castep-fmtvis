@@ -7,6 +7,12 @@ Author: Visagan Ravindran
 """
 import numpy as np
 from castepfmtvis.fmtdata import GridData
+from castepfmtvis.celldata import UnitCell
+from ase.units import Bohr
+
+WRITE_DEBUG_CELL = False
+
+print('Testing ability to read formatted data files')
 
 # Check if we can read charge densities
 ch_den = GridData('test.den_fmt')
@@ -68,3 +74,61 @@ assert np.isclose(spin_pot.pot[0, 34, 35, 35], -0.057691) and \
 assert np.isclose(spin_pot.pot[0, 39, 39, 38], -0.045735) and \
     np.isclose(spin_pot.pot[1, 39, 39, 38], -0.029914)
 print('SUCCESSFULLY READ SPIN POTENTIALS')
+
+
+def write_cell_contents(cell: UnitCell):
+    """Debug cell contents."""
+    print(' '*12 + 'Real Lattice (A)' + ' '*20+'Reciprocal Lattice(1/A)')
+    for v in cell.real_lat:
+        u = v / Bohr
+        print(f'{v[0]:12.6f}{v[1]:12.6f}{v[2]:12.6f} ' +
+              f'{u[0]:12.6f}{u[1]:12.6f}{u[2]:12.6f}')
+    print('\n'+' '*4+'Number of ions ', cell.nspecies)
+    print('-'*80)
+    print(' '*30+'Cell contents')
+    print('-'*80)
+    print(' '*11+'Fractional Coordinates'+' '*16+'Cartesian Coordinates(A)')
+    for i in range(cell.nspecies):
+        sp = cell.species[i]
+        frac = cell.frac_pos[i]
+        cart = cell.cart_pos[i]
+        print(f'{sp:2} {frac[0]:12.8f}{frac[1]:12.8f}{frac[2]:12.8f}  ' +
+              f'{cart[0]:12.8f}{cart[1]:12.8f}{cart[2]:12.8f}')
+
+
+# Initialise reference cell - this should also catch if we can do direct initialisation
+print('\nTesting ability to read cell files')
+ref_cell = UnitCell(
+    real_lat=np.array([
+        [0.0, 2.715500, 2.715500],
+        [2.715500, 0.0, 2.715500],
+        [2.715500, 2.715500, 0.0]]),
+    species=['Si', 'Si'],
+    frac_pos=np.array([
+        [0.0, 0.0, 0.0], [1/4, 1/4, 1/4]])
+)
+
+
+def check_cell(cellfile):
+    """Check cell initialises correctly."""
+    cell = UnitCell(cellfile)
+    if WRITE_DEBUG_CELL is True:
+        print('\nTesting cell: ', cellfile)
+        write_cell_contents(cell)
+        print('')
+
+    assert np.isclose(ref_cell.real_lat, cell.real_lat).all()
+    assert np.isclose(ref_cell.recip_lat, cell.recip_lat).all()
+    assert ref_cell.nspecies == cell.nspecies
+    assert ref_cell.species == cell.species
+    assert np.isclose(ref_cell.frac_pos, cell.frac_pos, atol=1e-11, rtol=5e-7).all()
+    assert np.isclose(ref_cell.cart_pos, cell.cart_pos).all()
+    print(f'SUCCESSFULLY READ {cellfile}')
+
+
+# Check that we can read cell files
+# NB: Only LATTICE_CART and LATTICE_ABC blocks supports units for now, POSITIONS_ABS must be in Angstroms!
+cellfiles = ('test_cells/lat_abc_ang.cell', 'test_cells/lat_abc_bohr.cell',
+             'test_cells/lat_cart_ang.cell', 'test_cells/lat_cart_bohr.cell')
+for f in cellfiles:
+    check_cell(f)

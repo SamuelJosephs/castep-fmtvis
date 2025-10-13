@@ -1,4 +1,5 @@
 %block lattice_abc
+ang
 5.431 5.431 5.431
 90.00 90.00 90.00
 %endblock lattice_abc

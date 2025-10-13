@@ -18,6 +18,8 @@ import castepfmtvis.arithmetic as arit
 from castepfmtvis import io
 from castepfmtvis.utils import cart_to_frac, frac_to_cart, reduce_frac_pts
 
+from ase.units import Bohr
+
 __all__ = ['UnitCell', 'calc_recip_lat',
            'cell_cart_to_abc', 'cell_abc_to_cart']
 
@@ -257,10 +259,22 @@ def _read_cell_pos(filename: str) -> tuple[list,
     else:
         have_frac = True
 
-    # Parse arithmetic in the block
+    # When counting atoms, check if we have specified any    LENGTH_UNITS 13/10/2025
+    # length units units but only for Cartesian coordinates. LENGTH_UNITS 13/10/2025
+    length_unit = None
+    if have_frac is False:
+        length_unit = 'ANG'
+        try:
+            sp, x, y, z = block_contents[0].split()
+        except ValueError:
+            # Not a coordinate line so probably length unit
+            length_unit = block_contents[0].strip().upper()
+            block_contents = block_contents[1:]
+
     natoms = len(block_contents)
     species = [None for i in range(natoms)]
 
+    # Parse arithmetic in the block
     vals = np.empty((natoms, 3), dtype=np.float64)
     for i, line in enumerate(block_contents):
         species[i] = line.split()[0]
@@ -273,6 +287,8 @@ def _read_cell_pos(filename: str) -> tuple[list,
         frac_pos = vals
     else:
         cart_pos = vals
+        # Make sure to convert to Angstroms  LENGTH_UNITS 13/10/2025
+        cart_pos = _convert_to_ang(cart_pos, length_unit)
 
     return species, frac_pos, cart_pos
 
@@ -381,6 +397,20 @@ def _get_bv_spg(cell: ase.Atoms) -> str:
     return bv_type
 
 
+def _convert_to_ang(val: float | npt.NDArray[np.float64], inunits: str):
+    """Convert length units to Angstroms."""
+    inunits = inunits.upper()
+    if inunits == 'ANG':
+        # Already in Angstroms, do nothing
+        pass
+    elif inunits == 'BOHR':
+        val *= Bohr
+    else:
+        raise ValueError('Unknown length unit: {inunits}')
+
+    return val
+
+
 def _read_real_lat_cell(filename: str) -> npt.NDArray[np.float64]:
     """Read lattice vector from a cell file.
 
@@ -397,22 +427,51 @@ def _read_real_lat_cell(filename: str) -> npt.NDArray[np.float64]:
 
     real_lat: npt.NDArray[np.float64] = np.empty((3, 3), dtype=np.float64)
 
+    length_unit = 'ANG'
     if have_cart is True:
+        # Check if we have any length units we need to deal with. LENGTH_UNITS 05/08/2025
+        if len(block_contents) == 4:
+            # First line gives length units so read and convert later. LENGTH_UNITS 05/08/2025
+            start_pos = 1
+            length_unit = block_contents[0].strip().upper()
+        elif len(block_contents) == 3:
+            # No units, continue as normal.
+            start_pos = 0
+        else:
+            raise IOError('Improperly formatted LATTICE_CART block')
+
         # Loop around the lines containing each vector parsing any arithmetic that may be present
         # in a given component.
-        for i, vec in enumerate(block_contents):
+        for i, vec in enumerate(block_contents[start_pos:]):
             for j, comp in enumerate(vec.split()):
                 real_lat[i, j] = arit.parse_arithmetic(comp)
+
+        # Convert units as necessary LENGTH_UNITS 05/08/2025
+        real_lat = _convert_to_ang(real_lat, length_unit)
     else:
         # Try to construct lattice vectors from lengths and angles.
         # First, we need to construct an ASE cell object so we need lattice positions
         symbols, scaled_positions, positions = _read_cell_pos(filename)
 
+        # Check if we have any lenght units we need to deal with. LENGTH_UNITS 05/08/2025
+        if len(block_contents) == 3:
+            # First line gives length units so read and convert later. LENGTH_UNITS 05/08/2025
+            len_pos, angle_pos = 1, 2
+            length_unit = block_contents[0].strip().upper()
+        elif len(block_contents) == 2:
+            # No units, continue as normal.
+            len_pos, angle_pos = 0, 1
+        else:
+            raise IOError('Improperly formatted LATTICE_ABC block')
+
         # Now parse arithmetic in LATTICE_ABC block
-        lengths = np.array([arit.parse_arithmetic(x) for x in block_contents[0].split()],
+        lengths = np.array([arit.parse_arithmetic(x) for x in block_contents[len_pos].split()],
                            dtype=np.float64)
-        angles = np.array([arit.parse_arithmetic(x) for x in block_contents[1].split()],
+        angles = np.array([arit.parse_arithmetic(x) for x in block_contents[angle_pos].split()],
                           dtype=np.float64)
+
+        # Convert units as necessary LENGTH_UNITS 05/08/2025
+        lengths = _convert_to_ang(lengths, length_unit)
 
         # Create cell and then find the Bravais lattice we need
         cellparams = np.concatenate((lengths, angles))
@@ -451,7 +510,20 @@ def calc_recip_lat(real_lat: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]
 class UnitCell():
     """Unit cell of a structure to visualise.
 
-    Currently, the data can only be read or initialised in a CASTEP format.
+    The cell can be initialised by directly by setting the necessary attributes, namely:
+    1. real_lat (in Angstroms)
+    2. frac_pos or cart_pos (in Angstroms)
+
+    Alternatively, it may be initialised by reading a CASTEP .cell file.
+    Note that by default, like in CASTEP, the default length unit is Angstroms
+    and will be assumed internally.
+
+    When doing so, arithmetic operations supported by CASTEP's parser will likewise be supported here.
+    Additionally, LIMITED support is availble for CASTEP's unit system where units for
+    certain keyword blocks may be provided and conversion done appropriately.
+
+    Currently, this is only supported for the LATTICE_ABC and LATTICE_CART blocks.
+    In particular, the POSITIONS_ABS block *must* be specified in angstroms.
 
     Attributes
     -------
