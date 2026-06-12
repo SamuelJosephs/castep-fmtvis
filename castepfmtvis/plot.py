@@ -299,7 +299,8 @@ def add_ions(plotter: pv.Plotter, cell: UnitCell,
     ion_meshes = []
     unique_species = []  # elements present within the cell. Needed for legend.
     iatom = 0
-
+    
+    
     for sp, frac, r, c, label in zip(elements, frac_pos, radius, color, labels):
         # Calculate Cartesian position
         pos = cell.calc_cart_coord(frac)
@@ -495,20 +496,16 @@ def interactive_isosurface(plotter: pv.Plotter, griddata: GridData,
         print(slide_rng)
         min_val, max_val = np.sort(slide_rng)
     else:
-        min_val, max_val = np.min(values), np.max(values)
+        
         if sep_magnitudes:
-            min_val_pos, min_val_neg = np.min(pos_values), np.min(neg_values)
-            max_val_pos, max_val_neg = np.max(pos_values), np.max(neg_values)
+            min_val, max_val = np.min(np.abs(values)), np.max(np.abs(values))
 
-            # Starting values for seperate sliders 
-            iso_value_pos = 0.5*(max_val_pos - min_val_pos)
-            iso_value_neg = 0.5*(max_val_neg - min_val_neg)
             
 
     # Set starting value for isosurface
     isovalue = 0.5 * (max_val - min_val)
 
-    def create_isosurface(value,sign = 1):
+    def create_isosurface(value):
         """Creates the initial isosurface."""
         # HACK / KLUDGE - needs to be done this way as Pyvista
         # only accepts single arguments for sliders.
@@ -517,48 +514,40 @@ def interactive_isosurface(plotter: pv.Plotter, griddata: GridData,
             iso = grid.contour([myval], scalars=values, rng=isorng,
                                method=iso_method)
             local_color = neg_color
+
+            plotter.add_mesh(iso, name=name,
+                             color=local_color,
+                             smooth_shading=True,
+                             opacity=opacity,
+                             )            
         else:
-            if sign == 1:
-                iso = grid.contour([myval], scalars=pos_values, rng=isorng,
+            
+            iso_pos = grid.contour([myval], scalars=values, rng=isorng,
                                    method=iso_method)
-                local_color = pos_color
-            elif sign == -1:
-                iso = grid.contour([myval], scalars=neg_values, rng=isorng,
+            local_color_pos = pos_color
+            
+            iso_neg = grid.contour([-myval], scalars=values, rng=isorng,
                                    method=iso_method)
-                local_color = neg_color
+            local_color_neg = neg_color
 
             # create initial plot
             # NB : It needs to be named so it updates correctly
-        plotter.add_mesh(iso, name=name + f"_{'pos' if sign is 1 else 'neg'}",
-                         color=local_color,
-                         smooth_shading=True,
-                         opacity=opacity,
-                         )
+            plotter.add_mesh(iso_pos, name=name + "_pos",
+                             color=local_color_pos,
+                             smooth_shading=True,
+                             opacity=opacity,
+                             )
+            plotter.add_mesh(iso_neg, name=name + "_neg",
+                             color=local_color_neg,
+                             smooth_shading=True,
+                             opacity=opacity,
+                             )            
 
-    def callback_factory(sign):
-        return lambda x: create_isosurface(x,sign=sign)
-    if not sep_magnitudes:
-        plotter.add_slider_widget(callback_factory(1),
-                                  [min_val, max_val],
-                                  value=float(isovalue),  # starting value
-                                  title=label,
-                                  pointa=pointa,
-                                  pointb=pointb
-                                  )
-    else:
-        sign = 1
-        plotter.add_slider_widget(callback_factory(1),
-                                  [min_val_pos, max_val_pos],
-                                  value=float(iso_value_pos),  # starting value
-                                  title=label,
-                                  pointa=pointa,
-                                  pointb=pointb
-                                  )
-        sign = -1
-        plotter.add_slider_widget(callback_factory(-1),
-                                  [min_val_neg, max_val_neg],
-                                  value=float(iso_value_neg),  # starting value
-                                  title=label,
-                                  pointa=[pointa[0],pointa[1] - 0.1],
-                                  pointb=[pointb[0],pointb[1] - 0.1]
-                                  )
+    
+    plotter.add_slider_widget(create_isosurface,
+                              [min_val, max_val],
+                              value=float(isovalue),  # starting value
+                              title=label,
+                              pointa=pointa,
+                              pointb=pointb
+                              )
