@@ -468,6 +468,12 @@ def interactive_isosurface(plotter: pv.Plotter, griddata: GridData,
         The relative coordinates of the right point of the slider on the display port.
     rng : tuple
         The range of values to look for contours.
+    sep_magnitudes: boolean
+        Whether to plot positive and negative magnitudes seperately
+    pos_color: str
+        If sep_magnitudes is True, what color to plot the positive isosurface
+    neg_color: str
+        If sep_magnitudes is True, what color to plot the negative isosurface
     """
     # Check that the current set in griddata has been set.
     if griddata.cur_data is None:
